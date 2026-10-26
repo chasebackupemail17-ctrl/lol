@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="neuro/neuro.vcxproj" Id="414bdd1a-1aa9-467b-870c-dea1a64529ef" />
+</Solution>

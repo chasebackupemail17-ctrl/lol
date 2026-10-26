@@ -1,0 +1,10 @@
+.vs/
+x64/
+build/
+*.exe
+*.pdb
+*.ipch
+*.aps
+*.user
+*.suo
+*.log

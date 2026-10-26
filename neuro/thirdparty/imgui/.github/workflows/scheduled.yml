@@ -1,0 +1,13 @@
+
+
+name: scheduled
+
+on:
+  schedule:
+    - cron:  '0 9 * * *'
+
+jobs:
+  scheduled:
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 0

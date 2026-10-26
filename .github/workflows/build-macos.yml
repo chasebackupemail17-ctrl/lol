@@ -1,0 +1,49 @@
+name: Build macOS Application
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build macOS App (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            arch: AppleSilicon-arm64
+          - os: macos-13
+            arch: Intel-x86_64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies via Homebrew
+        run: |
+          brew install cmake glfw curl
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release neuro
+
+      - name: Build macOS App Bundle
+        run: |
+          cmake --build build --config Release -j$(sysctl -n hw.logicalcpu)
+
+      - name: Package .app into ZIP
+        run: |
+          cd build/neuro
+          zip -r -y "../../neuro-mac-${{ matrix.arch }}.zip" neuro.app
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: neuro-mac-${{ matrix.arch }}
+          path: neuro-mac-${{ matrix.arch }}.zip
+          if-no-files-found: error
