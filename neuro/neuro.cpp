@@ -628,7 +628,7 @@ void key(int vk) {
     int macKey = MacPlatform::WindowsVkToMacKey(vk);
     if (macKey >= 0) {
         MacPlatform::SendKey(macKey, true);
-        Sleep(15);
+        Sleep(20);
         MacPlatform::SendKey(macKey, false);
     }
 }
@@ -637,6 +637,7 @@ void fastkey(int vk, uint16_t scan) {
     int macKey = MacPlatform::WindowsVkToMacKey(vk);
     if (macKey >= 0) {
         MacPlatform::SendKey(macKey, true);
+        Sleep(10);
         MacPlatform::SendKey(macKey, false);
     }
 }

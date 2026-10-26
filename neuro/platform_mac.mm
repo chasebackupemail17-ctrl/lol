@@ -62,9 +62,13 @@ bool CheckAccessibilityPermissions() {
 bool IsRobloxActive() {
     @autoreleasepool {
         NSRunningApplication* frontApp = [[NSWorkspace sharedWorkspace] frontmostApplication];
-        if (frontApp && frontApp.localizedName) {
+        if (frontApp) {
             NSString* name = frontApp.localizedName;
-            if ([name rangeOfString:@"Roblox" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+            if (name && [name rangeOfString:@"Roblox" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                return true;
+            }
+            NSString* bundleId = frontApp.bundleIdentifier;
+            if (bundleId && [bundleId rangeOfString:@"roblox" options:NSCaseInsensitiveSearch].location != NSNotFound) {
                 return true;
             }
         }
@@ -78,31 +82,61 @@ bool IsKeyDown(int macKeyCode) {
 }
 
 bool IsMouseButtonDown(int button) {
-    CGMouseButton b = (button == 0) ? kCGMouseButtonLeft : (button == 1 ? kCGMouseButtonRight : kCGMouseButtonCenter);
+    NSUInteger mouseButtons = [NSEvent pressedMouseButtons];
+    if ((mouseButtons & (1 << button)) != 0) return true;
+    CGMouseButton b = (button == 0) ? kCGMouseButtonLeft : (button == 1 ? kCGMouseButtonRight : (CGMouseButton)button);
     return CGEventSourceButtonState(kCGEventSourceStateHIDSystemState, b);
 }
 
 void SendKey(int macKeyCode, bool down) {
     if (macKeyCode < 0) return;
-    CGEventRef ev = CGEventCreateKeyboardEvent(NULL, (CGKeyCode)macKeyCode, down);
+    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    CGEventRef ev = CGEventCreateKeyboardEvent(src, (CGKeyCode)macKeyCode, down);
     if (ev) {
+        if (macKeyCode == kVK_Control) {
+            CGEventSetFlags(ev, down ? kCGEventFlagMaskControl : 0);
+        } else if (macKeyCode == kVK_Shift) {
+            CGEventSetFlags(ev, down ? kCGEventFlagMaskShift : 0);
+        } else if (macKeyCode == kVK_Option) {
+            CGEventSetFlags(ev, down ? kCGEventFlagMaskAlternate : 0);
+        } else if (macKeyCode == kVK_Command) {
+            CGEventSetFlags(ev, down ? kCGEventFlagMaskCommand : 0);
+        }
         CGEventPost(kCGHIDEventTap, ev);
         CFRelease(ev);
     }
+    if (src) CFRelease(src);
 }
 
 void SendMouseClick() {
-    CGEventRef down = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown, CGPointZero, kCGMouseButtonLeft);
-    CGEventRef up   = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseUp, CGPointZero, kCGMouseButtonLeft);
+    CGEventRef ev = CGEventCreate(NULL);
+    CGPoint curPos = CGPointZero;
+    if (ev) {
+        curPos = CGEventGetLocation(ev);
+        CFRelease(ev);
+    } else {
+        NSPoint p = [NSEvent mouseLocation];
+        NSScreen* screen = [NSScreen mainScreen];
+        curPos = CGPointMake(p.x, screen ? screen.frame.size.height - p.y : p.y);
+    }
+
+    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    CGEventRef down = CGEventCreateMouseEvent(src, kCGEventLeftMouseDown, curPos, kCGMouseButtonLeft);
+    CGEventRef up   = CGEventCreateMouseEvent(src, kCGEventLeftMouseUp, curPos, kCGMouseButtonLeft);
+
     if (down && up) {
         CGEventPost(kCGHIDEventTap, down);
+        usleep(15000); // 15ms hold time so Roblox registers click
         CGEventPost(kCGHIDEventTap, up);
         CFRelease(down);
         CFRelease(up);
     }
+    if (src) CFRelease(src);
 }
 
 int WindowsVkToMacKey(int vk) {
+    if (vk >= 'a' && vk <= 'z') vk = toupper(vk);
+
     switch (vk) {
         case 0x1B: return kVK_Escape; // Escape
         case 0x0D: return kVK_Return; // Enter
@@ -134,10 +168,18 @@ int WindowsVkToMacKey(int vk) {
         case '6': return kVK_ANSI_6; case '7': return kVK_ANSI_7; case '8': return kVK_ANSI_8;
         case '9': return kVK_ANSI_9;
 
+        // Function keys F1-F12
+        case 0x70: return kVK_F1; case 0x71: return kVK_F2; case 0x72: return kVK_F3;
+        case 0x73: return kVK_F4; case 0x74: return kVK_F5; case 0x75: return kVK_F6;
+        case 0x76: return kVK_F7; case 0x77: return kVK_F8; case 0x78: return kVK_F9;
+        case 0x79: return kVK_F10; case 0x7A: return kVK_F11; case 0x7B: return kVK_F12;
+
         // Mouse buttons (special negative codes for distinction)
         case 0x01: return -1; // LMB
         case 0x02: return -2; // RMB
         case 0x04: return -3; // MMB
+        case 0x05: return -4; // X1
+        case 0x06: return -5; // X2
         default: return -100;
     }
 }
