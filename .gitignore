@@ -1,10 +1,20 @@
+# Visual Studio / Windows artifacts
 .vs/
 x64/
-build/
+*.slnx
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.rc
+*.aps
 *.exe
+*.dll
 *.pdb
 *.ipch
-*.aps
-*.user
 *.suo
 *.log
+
+# Build artifacts
+build/
+*.DS_Store

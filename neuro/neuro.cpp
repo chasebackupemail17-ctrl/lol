@@ -1,10 +1,3 @@
-#ifdef _WIN32
-#include <windows.h>
-#include <shellapi.h>
-#include <d3d11.h>
-#include <dwmapi.h>
-#include <commdlg.h>
-#else
 #include "platform_mac.h"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -12,7 +5,6 @@
 #include <Carbon/Carbon.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#endif
 
 #include <iostream>
 #include <string>
@@ -36,7 +28,6 @@ namespace fs = std::filesystem;
 #define max(a,b) (((a)>(b))?(a):(b))
 #endif
 
-#ifndef _WIN32
 #define Sleep(ms) std::this_thread::sleep_for(std::chrono::milliseconds(ms))
 inline uint32_t GetTickCount() {
     using namespace std::chrono;
@@ -65,16 +56,10 @@ inline uint32_t GetTickCount() {
 #define VK_NUMPAD9  0x69
 #define VK_F1       0x70
 #define VK_F24      0x87
-#endif
 
 #include "imgui.h"
-#ifdef _WIN32
-#include "imgui_impl_win32.h"
-#include "imgui_impl_dx11.h"
-#else
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
-#endif
 
 #pragma warning(push)
 #pragma warning(disable: 4244 4996 26451)
@@ -82,16 +67,6 @@ inline uint32_t GetTickCount() {
 #include "thirdparty/stb_image.h"
 #pragma warning(pop)
 
-#ifdef _WIN32
-#pragma comment(lib, "d3d11.lib")
-#pragma comment(lib, "dwmapi.lib")
-#pragma comment(lib, "comdlg32.lib")
-
-#define WM_TRAYICON (WM_USER + 1)
-#define ID_TRAY_TOGGLE 1000
-#define ID_TRAY_EXIT 1001
-#define ID_TRAY_SETTINGS 1002
-#endif
 
 int shotgun = 4;
 int spray = 5;
@@ -134,14 +109,7 @@ std::vector<preset> presets;
 int activepreset = -1;
 
 std::string GetPresetsDir() {
-#ifdef _WIN32
-    char buf[MAX_PATH];
-    GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    std::string p(buf);
-    std::string dir = p.substr(0, p.find_last_of("\\/") + 1) + "presets\\";
-#else
     std::string dir = MacPlatform::GetApplicationSupportDir() + "presets/";
-#endif
     try {
         fs::create_directories(dir);
     } catch (...) {}
@@ -259,18 +227,9 @@ void RenamePresetFile(const std::string& old_name, const std::string& new_name) 
 
 void LoadPresets() {
     presets.clear();
-#ifdef _WIN32
-    char buf[MAX_PATH];
-    GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    std::string p(buf);
-    std::string dir = p.substr(0, p.find_last_of("\\/") + 1);
-    std::string old_filename = dir + "neuro_presets.ini";
-    std::string presets_dir = dir + "presets\\";
-#else
     std::string dir = MacPlatform::GetApplicationSupportDir();
     std::string old_filename = dir + "neuro_presets.ini";
     std::string presets_dir = dir + "presets/";
-#endif
 
     std::ifstream in(old_filename);
     if (in.is_open()) {
@@ -352,18 +311,10 @@ void SavePresets() {
 
 volatile bool lmbheld = false;
 
-#ifdef _WIN32
-NOTIFYICONDATA nid = {};
-HWND window_handle = NULL;
-
-static ID3D11ShaderResourceView* bg_srv = nullptr;
-static std::vector<ID3D11ShaderResourceView*> bg_gif_frames;
-#else
 void* window_handle = nullptr;
 static GLFWwindow* glfw_window = nullptr;
 static GLuint bg_texture_id = 0;
 static std::vector<GLuint> bg_gif_texture_ids;
-#endif
 
 enum AppState {
     STATE_LOGIN,
@@ -421,54 +372,9 @@ struct Ripple {
 };
 std::vector<Ripple> click_ripples;
 
-#ifdef _WIN32
-static ID3D11Device* d3d_device = nullptr;
-static ID3D11DeviceContext* d3d_context = nullptr;
-static IDXGISwapChain* swap_chain = nullptr;
-static ID3D11RenderTargetView* main_render_target_view = nullptr;
-#endif
 
 static ImFont* font_bold = nullptr;
 
-#ifdef _WIN32
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-bool CreateD3D(HWND hWnd);
-void CleanupD3D();
-void CreateTarget();
-void CleanupTarget();
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
-
-HHOOK mhook = NULL;
-
-LRESULT CALLBACK mouseproc(int nCode, WPARAM wParam, LPARAM lParam) {
-    if (nCode == HC_ACTION) {
-        MSLLHOOKSTRUCT* pMouse = (MSLLHOOKSTRUCT*)lParam;
-        if (!(pMouse->flags & LLMHF_INJECTED)) {
-            if (wParam == WM_LBUTTONDOWN) {
-                lmbheld = true;
-            }
-            else if (wParam == WM_LBUTTONUP) {
-                lmbheld = false;
-            }
-        }
-    }
-    return CallNextHookEx(mhook, nCode, wParam, lParam);
-}
-
-DWORD WINAPI InputHookThread(LPVOID lpParam) {
-    mhook = SetWindowsHookEx(WH_MOUSE_LL, mouseproc, NULL, 0);
-    MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-    if (mhook) {
-        UnhookWindowsHookEx(mhook);
-        mhook = NULL;
-    }
-    return 0;
-}
-#else
 inline bool IsKeyOrMouseDown(int vk) {
     if (vk == 0x01) return MacPlatform::IsMouseButtonDown(0);
     if (vk == 0x02) return MacPlatform::IsMouseButtonDown(1);
@@ -477,7 +383,6 @@ inline bool IsKeyOrMouseDown(int vk) {
     if (macKey >= 0) return MacPlatform::IsKeyDown(macKey);
     return false;
 }
-#endif
 
 std::string GetKeyName(int vk) {
     if (vk == 0) return "None";
@@ -502,32 +407,15 @@ std::string GetKeyName(int vk) {
     if (vk >= '0' && vk <= '9') return std::string(1, (char)vk);
     if (vk >= VK_F1 && vk <= VK_F24) return "F" + std::to_string(vk - VK_F1 + 1);
 
-#ifdef _WIN32
-    UINT scanCode = MapVirtualKey(vk, MAPVK_VK_TO_VSC);
-    CHAR szName[128];
-    LONG lParam = (scanCode << 16);
-    if (GetKeyNameTextA(lParam, szName, sizeof(szName))) {
-        return std::string(szName);
-    }
-#else
     int macKey = MacPlatform::WindowsVkToMacKey(vk);
     if (macKey >= 0 || macKey <= -1) {
         return MacPlatform::GetMacKeyName(macKey);
     }
-#endif
     return "Key " + std::to_string(vk);
 }
 
 void LoadSettings() {
-#ifdef _WIN32
-    char buf[MAX_PATH];
-    GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    std::string p(buf);
-    std::string dir = p.substr(0, p.find_last_of("\\/") + 1);
-    std::string filename = dir + "neuro_settings.ini";
-#else
     std::string filename = MacPlatform::GetApplicationSupportDir() + "neuro_settings.ini";
-#endif
 
     std::ifstream in(filename);
     if (!in.is_open()) return;
@@ -593,15 +481,7 @@ void LoadSettings() {
 }
 
 void SaveSettings() {
-#ifdef _WIN32
-    char buf[MAX_PATH];
-    GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    std::string p(buf);
-    std::string dir = p.substr(0, p.find_last_of("\\/") + 1);
-    std::string filename = dir + "neuro_settings.ini";
-#else
     std::string filename = MacPlatform::GetApplicationSupportDir() + "neuro_settings.ini";
-#endif
 
     std::ofstream out(filename);
     if (!out.is_open()) return;
@@ -641,38 +521,6 @@ void SaveSettings() {
     out << "pull_out=" << (pull_out ? "1" : "0") << "\n";
 }
 
-#ifdef _WIN32
-bool CreateTextureFromRGBA(unsigned char* data, int w, int h, ID3D11ShaderResourceView** out_srv) {
-    if (!data || !d3d_device) return false;
-
-    D3D11_TEXTURE2D_DESC desc = {};
-    desc.Width = w;
-    desc.Height = h;
-    desc.MipLevels = 1;
-    desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-
-    D3D11_SUBRESOURCE_DATA subResource = {};
-    subResource.pSysMem = data;
-    subResource.SysMemPitch = w * 4;
-
-    ID3D11Texture2D* pTexture = nullptr;
-    HRESULT hr = d3d_device->CreateTexture2D(&desc, &subResource, &pTexture);
-    if (FAILED(hr)) return false;
-
-    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels = 1;
-
-    hr = d3d_device->CreateShaderResourceView(pTexture, &srvDesc, out_srv);
-    pTexture->Release();
-    return SUCCEEDED(hr);
-}
-#else
 GLuint CreateGLTextureFromRGBA(unsigned char* data, int w, int h) {
     if (!data) return 0;
     GLuint tex = 0;
@@ -686,22 +534,13 @@ GLuint CreateGLTextureFromRGBA(unsigned char* data, int w, int h) {
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     return tex;
 }
-#endif
 
 void ClearBGTextures() {
-#ifdef _WIN32
-    if (bg_srv) { bg_srv->Release(); bg_srv = nullptr; }
-    for (auto* srv : bg_gif_frames) {
-        if (srv) srv->Release();
-    }
-    bg_gif_frames.clear();
-#else
     if (bg_texture_id != 0) { glDeleteTextures(1, &bg_texture_id); bg_texture_id = 0; }
     for (auto tid : bg_gif_texture_ids) {
         if (tid != 0) glDeleteTextures(1, &tid);
     }
     bg_gif_texture_ids.clear();
-#endif
     bg_gif_delays.clear();
     bg_gif_current_frame = 0;
     bg_gif_timer = 0.0f;
@@ -745,35 +584,20 @@ bool LoadBGImage(const std::string& path) {
 
         int frameSize = x * y * 4;
         for (int i = 0; i < frames; i++) {
-#ifdef _WIN32
-            ID3D11ShaderResourceView* srv = nullptr;
-            if (CreateTextureFromRGBA(data + i * frameSize, x, y, &srv)) {
-                bg_gif_frames.push_back(srv);
-                bg_gif_delays.push_back(delays ? (delays[i] > 0 ? delays[i] : 100) : 100);
-            }
-#else
             GLuint tex = CreateGLTextureFromRGBA(data + i * frameSize, x, y);
             if (tex != 0) {
                 bg_gif_texture_ids.push_back(tex);
                 bg_gif_delays.push_back(delays ? (delays[i] > 0 ? delays[i] : 100) : 100);
             }
-#endif
         }
 
         stbi_image_free(data);
         if (delays) stbi_image_free(delays);
 
-#ifdef _WIN32
-        if (bg_gif_frames.empty()) {
-            bg_is_gif = false;
-            return false;
-        }
-#else
         if (bg_gif_texture_ids.empty()) {
             bg_is_gif = false;
             return false;
         }
-#endif
         return true;
     }
     else {
@@ -783,36 +607,14 @@ bool LoadBGImage(const std::string& path) {
 
         bg_width = w;
         bg_height = h;
-#ifdef _WIN32
-        bool ok = CreateTextureFromRGBA(data, w, h, &bg_srv);
-#else
         bg_texture_id = CreateGLTextureFromRGBA(data, w, h);
         bool ok = (bg_texture_id != 0);
-#endif
         stbi_image_free(data);
         return ok;
     }
 }
 
 void OpenBGFilePicker() {
-#ifdef _WIN32
-    char filename[MAX_PATH] = "";
-    OPENFILENAMEA ofn = {};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = window_handle;
-    ofn.lpstrFilter = "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0All Files\0*.*\0";
-    ofn.lpstrFile = filename;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-    ofn.lpstrTitle = "Select Background Image";
-
-    if (GetOpenFileNameA(&ofn)) {
-        if (LoadBGImage(filename)) {
-            ui_bg_path = filename;
-            SaveSettings();
-        }
-    }
-#else
     std::string filename = MacPlatform::OpenFileDialog();
     if (!filename.empty()) {
         if (LoadBGImage(filename)) {
@@ -820,42 +622,17 @@ void OpenBGFilePicker() {
             SaveSettings();
         }
     }
-#endif
 }
 
 void key(int vk) {
-#ifdef _WIN32
-    WORD scan = MapVirtualKey(vk, 0);
-    INPUT i = {};
-    i.type = INPUT_KEYBOARD;
-    i.ki.wScan = scan;
-    i.ki.dwFlags = KEYEVENTF_SCANCODE;
-    SendInput(1, &i, sizeof(INPUT));
-    Sleep(15);
-    i.ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-    SendInput(1, &i, sizeof(INPUT));
-#else
     int macKey = MacPlatform::WindowsVkToMacKey(vk);
     if (macKey >= 0) {
         MacPlatform::SendKey(macKey, true);
         Sleep(15);
         MacPlatform::SendKey(macKey, false);
     }
-#endif
 }
 
-#ifdef _WIN32
-void fastkey(int vk, WORD scan) {
-    INPUT inputs[2] = {};
-    inputs[0].type = INPUT_KEYBOARD;
-    inputs[0].ki.wScan = scan;
-    inputs[0].ki.dwFlags = KEYEVENTF_SCANCODE;
-    inputs[1].type = INPUT_KEYBOARD;
-    inputs[1].ki.wScan = scan;
-    inputs[1].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-    SendInput(2, inputs, sizeof(INPUT));
-}
-#else
 void fastkey(int vk, uint16_t scan) {
     int macKey = MacPlatform::WindowsVkToMacKey(vk);
     if (macKey >= 0) {
@@ -863,46 +640,23 @@ void fastkey(int vk, uint16_t scan) {
         MacPlatform::SendKey(macKey, false);
     }
 }
-#endif
 
 void click() {
-#ifdef _WIN32
-    INPUT inputs[2] = {};
-    inputs[0].type = INPUT_MOUSE;
-    inputs[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
-    inputs[1].type = INPUT_MOUSE;
-    inputs[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
-    SendInput(2, inputs, sizeof(INPUT));
-#else
     MacPlatform::SendMouseClick();
-#endif
 }
 
 void crouch(bool down) {
-#ifdef _WIN32
-    WORD scan = MapVirtualKey(VK_CONTROL, 0);
-    INPUT i = {};
-    i.type = INPUT_KEYBOARD;
-    i.ki.wScan = scan;
-    i.ki.dwFlags = down ? KEYEVENTF_SCANCODE : (KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP);
-    SendInput(1, &i, sizeof(INPUT));
-#else
     int macKey = MacPlatform::WindowsVkToMacKey(VK_CONTROL);
     if (macKey >= 0) {
         MacPlatform::SendKey(macKey, down);
     }
-#endif
 }
 
 int slot(int n) {
     return 0x30 + n;
 }
 
-#ifdef _WIN32
-DWORD WINAPI MacroThread(LPVOID lpParam) {
-#else
 void* MacroThread(void* lpParam) {
-#endif
     DWORD lastAutoclickTime = 0;
 
     while (true) {
@@ -914,16 +668,8 @@ void* MacroThread(void* lpParam) {
             continue;
         }
 
-#ifdef _WIN32
-        HWND foregroundWin = GetForegroundWindow();
-        char windowTitle[256];
-        GetWindowTextA(foregroundWin, windowTitle, sizeof(windowTitle));
-        std::string titleStr(windowTitle);
-        robloxactive = (titleStr.find("Roblox") != std::string::npos);
-#else
         robloxactive = MacPlatform::IsRobloxActive();
         lmbheld = MacPlatform::IsMouseButtonDown(0);
-#endif
 
         if (!robloxactive) {
             macroheld = false;
@@ -947,11 +693,7 @@ void* MacroThread(void* lpParam) {
         static bool autoclickheld = false;
         bool autoclickdown = false;
         if (autoclickkey != 0) {
-#ifdef _WIN32
-            autoclickdown = (GetAsyncKeyState(autoclickkey) & 0x8000) != 0;
-#else
             autoclickdown = IsKeyOrMouseDown(autoclickkey);
-#endif
         }
 
         if (autoclickdown && !autoclickheld) {
@@ -963,11 +705,7 @@ void* MacroThread(void* lpParam) {
 
         bool resetdown = false;
         if (resetkey != 0) {
-#ifdef _WIN32
-            resetdown = (GetAsyncKeyState(resetkey) & 0x8000) != 0;
-#else
             resetdown = IsKeyOrMouseDown(resetkey);
-#endif
         }
 
         if (resetdown && !resetheld) {
@@ -979,27 +717,15 @@ void* MacroThread(void* lpParam) {
             Sleep(resetsleep);
 
             int kvk = slot(katana);
-#ifdef _WIN32
-            WORD kscan = MapVirtualKey(kvk, 0);
-#else
             uint16_t kscan = 0;
-#endif
             DWORD starttime = GetTickCount();
 
             while (GetTickCount() - starttime < (DWORD)resetduration) {
                 if (app_state != STATE_SETTINGS || !enabled)
                     break;
 
-#ifdef _WIN32
-                HWND currentWin = GetForegroundWindow();
-                char currentTitle[256];
-                GetWindowTextA(currentWin, currentTitle, sizeof(currentTitle));
-                if (std::string(currentTitle).find("Roblox") == std::string::npos)
-                    break;
-#else
                 if (!MacPlatform::IsRobloxActive())
                     break;
-#endif
 
                 fastkey(kvk, kscan);
                 Sleep(1);
@@ -1010,11 +736,7 @@ void* MacroThread(void* lpParam) {
 
         bool down = false;
         if (macrokey != 0) {
-#ifdef _WIN32
-            down = (GetAsyncKeyState(macrokey) & 0x8000) != 0;
-#else
             down = IsKeyOrMouseDown(macrokey);
-#endif
         }
 
         if (down) {
@@ -1108,11 +830,7 @@ void* MacroThread(void* lpParam) {
         Sleep(10);
     }
 
-#ifdef _WIN32
-    return 0;
-#else
     return nullptr;
-#endif
 }
 
 void DoLoginThread() {
@@ -1465,31 +1183,6 @@ int main(int argc, char** argv) {
 
         {
             ImVec2 bgWinPos = ImGui::GetWindowPos();
-#ifdef _WIN32
-            if (bg_is_gif && !bg_gif_frames.empty()) {
-                bg_gif_timer += ImGui::GetIO().DeltaTime * 1000.0f;
-                int delay = bg_gif_delays[bg_gif_current_frame];
-                if (delay <= 0) delay = 100;
-                while (bg_gif_timer >= (float)delay) {
-                    bg_gif_timer -= (float)delay;
-                    bg_gif_current_frame = (bg_gif_current_frame + 1) % (int)bg_gif_frames.size();
-                    delay = bg_gif_delays[bg_gif_current_frame];
-                    if (delay <= 0) delay = 100;
-                }
-                ImGui::GetWindowDrawList()->AddImage(
-                    (ImTextureID)bg_gif_frames[bg_gif_current_frame],
-                    bgWinPos,
-                    ImVec2(bgWinPos.x + (float)clientWidth, bgWinPos.y + (float)clientHeight)
-                );
-            }
-            else if (bg_srv) {
-                ImGui::GetWindowDrawList()->AddImage(
-                    (ImTextureID)bg_srv,
-                    bgWinPos,
-                    ImVec2(bgWinPos.x + (float)clientWidth, bgWinPos.y + (float)clientHeight)
-                );
-            }
-#else
             if (bg_is_gif && !bg_gif_texture_ids.empty()) {
                 bg_gif_timer += ImGui::GetIO().DeltaTime * 1000.0f;
                 int delay = bg_gif_delays[bg_gif_current_frame];
@@ -1513,7 +1206,6 @@ int main(int argc, char** argv) {
                     ImVec2(bgWinPos.x + (float)clientWidth, bgWinPos.y + (float)clientHeight)
                 );
             }
-#endif
         }
 
         if (ui_glow_enabled) {
@@ -1738,11 +1430,7 @@ int main(int argc, char** argv) {
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.20f, 0.25f, 1.00f));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.15f, 0.15f, 0.20f, 1.00f));
         if (ImGui::Button("-", ImVec2(32.0f, 26.0f))) {
-#ifdef _WIN32
-            ShowWindow(window_handle, SW_MINIMIZE);
-#else
             if (glfw_window) glfwIconifyWindow(glfw_window);
-#endif
         }
         ImGui::PopStyleColor(3);
 
@@ -2216,12 +1904,7 @@ int main(int argc, char** argv) {
                             if (ImGui::MenuItem("Show Preset")) {
                                 std::string dir = GetPresetsDir();
                                 std::string filepath = dir + presets[i].name + ".json";
-#ifdef _WIN32
-                                std::string cmd = "/select,\"" + filepath + "\"";
-                                ShellExecuteA(NULL, "open", "explorer.exe", cmd.c_str(), NULL, SW_SHOWNORMAL);
-#else
                                 MacPlatform::RevealInFinder(filepath);
-#endif
                             }
                             if (ImGui::MenuItem("Delete Preset")) {
                                 DeletePresetFile(presets[i].name);
@@ -2385,9 +2068,6 @@ int main(int argc, char** argv) {
                 ImGui::TextDisabled("Stream Proof");
                 ImGui::SameLine(160.0f);
                 if (ImGui::Checkbox("##streamproof", &ui_streamproof)) {
-#ifdef _WIN32
-                    SetWindowDisplayAffinity(window_handle, ui_streamproof ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
-#endif
                     SaveSettings();
                 }
 
@@ -2533,11 +2213,7 @@ int main(int argc, char** argv) {
             float trayButtonWidth = 140.0f;
             ImGui::SameLine(ImGui::GetWindowWidth() - trayButtonWidth - 8.0f);
             if (ImGui::Button("Minimize to Tray", ImVec2(trayButtonWidth, 0.0f))) {
-#ifdef _WIN32
-                ShowWindow(window_handle, SW_HIDE);
-#else
                 if (glfw_window) glfwIconifyWindow(glfw_window);
-#endif
             }
         }
 
