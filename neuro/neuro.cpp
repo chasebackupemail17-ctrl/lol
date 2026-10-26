@@ -1121,13 +1121,16 @@ int main(int argc, char** argv) {
     };
     for (const char* p : macFontPaths) {
         if (fs::exists(p)) {
-            io.Fonts->AddFontFromFileTTF(p, 15.0f);
-            font_bold = io.Fonts->AddFontFromFileTTF(p, 19.0f);
-            font_loaded = true;
-            break;
+            ImFont* f1 = io.Fonts->AddFontFromFileTTF(p, 15.0f);
+            ImFont* f2 = io.Fonts->AddFontFromFileTTF(p, 19.0f);
+            if (f1 && f2) {
+                font_bold = f2;
+                font_loaded = true;
+                break;
+            }
         }
     }
-    if (!font_loaded) {
+    if (!font_loaded || !font_bold) {
         io.Fonts->AddFontDefault();
         font_bold = io.Fonts->AddFontDefault();
     }

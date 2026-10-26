@@ -26,7 +26,7 @@ jobs:
 
       - name: Install dependencies via Homebrew
         run: |
-          brew install cmake glfw curl
+          brew install cmake
 
       - name: Configure CMake
         run: |

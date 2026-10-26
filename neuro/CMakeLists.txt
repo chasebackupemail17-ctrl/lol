@@ -9,9 +9,21 @@ set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 # Enable ARC for Objective-C++
 add_compile_options("$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
 
-# Find dependencies
-find_package(glfw3 3.3 REQUIRED)
-find_package(CURL REQUIRED)
+# Build GLFW statically from source so the app is 100% standalone without external dylibs
+include(FetchContent)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG 3.3.9
+)
+FetchContent_MakeAvailable(glfw)
+
 find_package(OpenGL REQUIRED)
 
 set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/imgui")
@@ -36,13 +48,13 @@ target_include_directories(neuro PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
     ${CMAKE_CURRENT_SOURCE_DIR}/util
-    ${CURL_INCLUDE_DIRS}
     ${OPENGL_INCLUDE_DIR}
 )
 
+# Link GLFW statically + macOS system frameworks and system curl
 target_link_libraries(neuro PRIVATE
     glfw
-    ${CURL_LIBRARIES}
+    "-lcurl"
     ${OPENGL_LIBRARIES}
     "-framework Cocoa"
     "-framework Carbon"
