@@ -2385,7 +2385,9 @@ int main(int argc, char** argv) {
                 ImGui::TextDisabled("Stream Proof");
                 ImGui::SameLine(160.0f);
                 if (ImGui::Checkbox("##streamproof", &ui_streamproof)) {
+#ifdef _WIN32
                     SetWindowDisplayAffinity(window_handle, ui_streamproof ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
+#endif
                     SaveSettings();
                 }
 
