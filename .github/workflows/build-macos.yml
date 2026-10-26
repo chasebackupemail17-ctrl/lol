@@ -44,6 +44,8 @@ jobs:
             exit 1
           fi
           echo "Found app at: $APP_PATH"
+          chmod +x "$APP_PATH/Contents/MacOS/neuro"
+          codesign --force --deep --sign - "$APP_PATH"
           APP_DIR=$(dirname "$APP_PATH")
           cd "$APP_DIR"
           zip -r -y "${GITHUB_WORKSPACE}/neuro-mac-${{ matrix.arch }}.zip" "neuro.app"
