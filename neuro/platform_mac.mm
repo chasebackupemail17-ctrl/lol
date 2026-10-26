@@ -59,6 +59,75 @@ bool CheckAccessibilityPermissions() {
     return AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
 }
 
+void OpenAccessibilitySettings() {
+    @autoreleasepool {
+        [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"]];
+    }
+}
+
+static std::atomic<bool> s_global_keys[256];
+static std::atomic<bool> s_global_mouse[8];
+static std::atomic<bool> s_monitors_ready{ false };
+
+void InitEventMonitors() {
+    if (s_monitors_ready.exchange(true)) return;
+
+    for (int i = 0; i < 256; i++) s_global_keys[i].store(false);
+    for (int i = 0; i < 8; i++) s_global_mouse[i].store(false);
+
+    @autoreleasepool {
+        // Global monitors capture events delivered to background/other apps (like Roblox)
+        [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^(NSEvent* event) {
+            int code = (int)[event keyCode];
+            if (code >= 0 && code < 256) s_global_keys[code].store(true);
+        }];
+        [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskKeyUp handler:^(NSEvent* event) {
+            int code = (int)[event keyCode];
+            if (code >= 0 && code < 256) s_global_keys[code].store(false);
+        }];
+        [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^(NSEvent* event) {
+            s_global_mouse[0].store(true);
+        }];
+        [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskLeftMouseUp handler:^(NSEvent* event) {
+            s_global_mouse[0].store(false);
+        }];
+        [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskRightMouseDown handler:^(NSEvent* event) {
+            s_global_mouse[1].store(true);
+        }];
+        [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskRightMouseUp handler:^(NSEvent* event) {
+            s_global_mouse[1].store(false);
+        }];
+        [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskOtherMouseDown handler:^(NSEvent* event) {
+            NSInteger b = [event buttonNumber];
+            if (b >= 0 && b < 8) s_global_mouse[b].store(true);
+        }];
+        [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskOtherMouseUp handler:^(NSEvent* event) {
+            NSInteger b = [event buttonNumber];
+            if (b >= 0 && b < 8) s_global_mouse[b].store(false);
+        }];
+
+        // Local monitors capture events when neuro window itself has focus
+        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent*(NSEvent* event) {
+            int code = (int)[event keyCode];
+            if (code >= 0 && code < 256) s_global_keys[code].store(true);
+            return event;
+        }];
+        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp handler:^NSEvent*(NSEvent* event) {
+            int code = (int)[event keyCode];
+            if (code >= 0 && code < 256) s_global_keys[code].store(false);
+            return event;
+        }];
+        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^NSEvent*(NSEvent* event) {
+            s_global_mouse[0].store(true);
+            return event;
+        }];
+        [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseUp handler:^NSEvent*(NSEvent* event) {
+            s_global_mouse[0].store(false);
+            return event;
+        }];
+    }
+}
+
 bool IsRobloxActive() {
     @autoreleasepool {
         NSRunningApplication* frontApp = [[NSWorkspace sharedWorkspace] frontmostApplication];
@@ -77,20 +146,26 @@ bool IsRobloxActive() {
 }
 
 bool IsKeyDown(int macKeyCode) {
-    if (macKeyCode < 0 || macKeyCode > 127) return false;
-    return CGEventSourceKeyState(kCGEventSourceStateHIDSystemState, (CGKeyCode)macKeyCode);
+    if (macKeyCode < 0 || macKeyCode >= 256) return false;
+    if (s_global_keys[macKeyCode].load()) return true;
+    if (CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, (CGKeyCode)macKeyCode)) return true;
+    if (CGEventSourceKeyState(kCGEventSourceStateHIDSystemState, (CGKeyCode)macKeyCode)) return true;
+    return false;
 }
 
 bool IsMouseButtonDown(int button) {
+    if (button >= 0 && button < 8 && s_global_mouse[button].load()) return true;
     NSUInteger mouseButtons = [NSEvent pressedMouseButtons];
     if ((mouseButtons & (1 << button)) != 0) return true;
     CGMouseButton b = (button == 0) ? kCGMouseButtonLeft : (button == 1 ? kCGMouseButtonRight : (CGMouseButton)button);
-    return CGEventSourceButtonState(kCGEventSourceStateHIDSystemState, b);
+    if (CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, b)) return true;
+    if (CGEventSourceButtonState(kCGEventSourceStateHIDSystemState, b)) return true;
+    return false;
 }
 
 void SendKey(int macKeyCode, bool down) {
     if (macKeyCode < 0) return;
-    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
     CGEventRef ev = CGEventCreateKeyboardEvent(src, (CGKeyCode)macKeyCode, down);
     if (ev) {
         if (macKeyCode == kVK_Control) {
@@ -102,6 +177,8 @@ void SendKey(int macKeyCode, bool down) {
         } else if (macKeyCode == kVK_Command) {
             CGEventSetFlags(ev, down ? kCGEventFlagMaskCommand : 0);
         }
+        // Post to both Session (active user app) and HID event tap
+        CGEventPost(kCGSessionEventTap, ev);
         CGEventPost(kCGHIDEventTap, ev);
         CFRelease(ev);
     }
@@ -120,13 +197,15 @@ void SendMouseClick() {
         curPos = CGPointMake(p.x, screen ? screen.frame.size.height - p.y : p.y);
     }
 
-    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
     CGEventRef down = CGEventCreateMouseEvent(src, kCGEventLeftMouseDown, curPos, kCGMouseButtonLeft);
     CGEventRef up   = CGEventCreateMouseEvent(src, kCGEventLeftMouseUp, curPos, kCGMouseButtonLeft);
 
     if (down && up) {
+        CGEventPost(kCGSessionEventTap, down);
         CGEventPost(kCGHIDEventTap, down);
-        usleep(15000); // 15ms hold time so Roblox registers click
+        usleep(25000); // 25ms solid hold time so game engine registers the click
+        CGEventPost(kCGSessionEventTap, up);
         CGEventPost(kCGHIDEventTap, up);
         CFRelease(down);
         CFRelease(up);

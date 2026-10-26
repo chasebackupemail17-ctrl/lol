@@ -14,9 +14,11 @@ std::string GetApplicationSupportDir();
 
 // Permissions & Active app
 bool CheckAccessibilityPermissions();
+void OpenAccessibilitySettings();
 bool IsRobloxActive();
 
 // Input monitoring and simulation
+void InitEventMonitors();
 bool IsKeyDown(int macKeyCode);
 bool IsMouseButtonDown(int button); // 0=LMB, 1=RMB, 2=MMB
 void SendKey(int macKeyCode, bool down);
