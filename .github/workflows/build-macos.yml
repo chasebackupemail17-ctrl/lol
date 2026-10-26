@@ -38,8 +38,15 @@ jobs:
 
       - name: Package .app into ZIP
         run: |
-          cd build/neuro
-          zip -r -y "../../neuro-mac-${{ matrix.arch }}.zip" neuro.app
+          APP_PATH=$(find build -name "neuro.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: neuro.app not found in build directory!"
+            exit 1
+          fi
+          echo "Found app at: $APP_PATH"
+          APP_DIR=$(dirname "$APP_PATH")
+          cd "$APP_DIR"
+          zip -r -y "${GITHUB_WORKSPACE}/neuro-mac-${{ matrix.arch }}.zip" "neuro.app"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
